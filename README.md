@@ -13,22 +13,49 @@ This function is similar to Lua's native `load`, and has the following differenc
 
 If the resulting function has upvalues, the upvalues are set to the values of `upvalues`, if that parameter is given. For Lua 5.2+, the first upvalue, if not given, is set to the global environment. (For Lua 5.2+, when you load a main chunk, the resulting function will always have exactly one upvalue, the `_ENV` variable. However, when you load a binary chunk created from a function (e.g. `string.dump`), the resulting function can have an arbitrary number of upvalues.)
 
-The string `mode` controls whether the chunk can be text or binary (that is, a precompiled chunk). It may be the string `"b"` (only binary chunks), `"t"` (only text chunks), or `"bt"` (both binary and text). The default is `"bt"`. **This argument has no effect when running under Lua 5.1. For Lua 5.1, it is only kept to provide a uniform API across Lua versions.**
-
-See the native `load` for the definitions of `chunk` and `chunkname`.
+See the native `load` for the definitions of `chunk`, `chunkname` and `mode`.
 
 All caveats from the native `load` may apply.
 
 See also:
 
 - `load`:
-[Lua 5.1](http://www.lua.org/manual/5.1/manual.html#pdf-load) ([`loadstring`](http://www.lua.org/manual/5.1/manual.html#pdf-loadstring)),
 [Lua 5.2](http://www.lua.org/manual/5.2/manual.html#pdf-load),
 [Lua 5.3](http://www.lua.org/manual/5.3/manual.html#pdf-load).
 - `string.dump`:
-[Lua 5.1](http://www.lua.org/manual/5.1/manual.html#pdf-string.dump),
 [Lua 5.2](http://www.lua.org/manual/5.2/manual.html#pdf-string.dump),
 [Lua 5.3](http://www.lua.org/manual/5.3/manual.html#pdf-string.dump).
+
+### `newupval()`
+
+Creates an upvalue object.
+
+Upvalue objects can be passed to loadx() in place of upvalue values. They allow you to share upvalues between functions.
+
+## Examples
+
+### Shared upvalues
+
+```lua
+local loadx = require"loadx"
+
+local up1 = loadx.newupval()
+local up2 = loadx.newupval()
+local env = loadx.newupval()
+
+local UP1, UP2 -- dummies
+local fc1 = string.dump(function(a, b, e) _ENV = e UP1 = a UP2 = b end) -- function code 1
+local fc2 = string.dump(function() print(UP1[UP2]) end) -- function code 2
+
+local set = loadx.loadx(fc1, nil, nil, env, up1, up2)
+local prnt = loadx.loadx(fc2, nil, nil, env, up1, up2)
+
+assert(not pcall(prnt)) -- should fail because we have no env
+set(nil, nil, {print=print}) -- a, b, e, where e sets the _ENV
+assert(not pcall(prnt)) -- should fail because we can't index nil
+set({key="hi"}, "key", {print=print}) -- a, b, e. a[b] is "hi"
+assert(pcall(prnt)) -- should print "hi"
+```
 
 ## Compiling
 
@@ -42,4 +69,4 @@ Untested on Windows and OSX.
 
 ## Compatibility
 
-loadx is fully compatible with Lua 5.2 and Lua 5.3. loadx is partially compatible with Lua 5.1, lacking support for the `mode` argument.
+loadx is fully compatible with Lua 5.2 and Lua 5.3. loadx is incompatible with Lua 5.1.

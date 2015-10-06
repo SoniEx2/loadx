@@ -1,24 +1,56 @@
 #include <lua.h>
 #include <lauxlib.h>
 
+#if LUA_VERSION_NUM <= 501
+#error Lua <= 5.1 not supported
+#endif
+
+static int regkey_upval;  /* registry key for the upvalues table */
+
+static int getupval(lua_State *L) {
+  luaL_checkstack(L, 2, NULL); /* we need 2 slots */
+  lua_pushvalue(L, -1);
+  lua_pushlightuserdata(L, &regkey_upval);  /* get upvalues table */
+  lua_rawget(L, LUA_REGISTRYINDEX);
+  if (lua_type(L, -1) != LUA_TTABLE) {
+    return luaL_error(L, "Couldn't find upvalue table");
+  }
+  lua_insert(L, -2);
+  lua_rawget(L, -2);
+  if (lua_type(L, -1) != LUA_TFUNCTION) {  /* get upvalue */
+    lua_pop(L, 2);  /* remove object and the upvalues table */
+    return 0;  /* no upvalue */
+  } else {
+    lua_remove(L, -2);  /* remove upvalues table */
+    lua_remove(L, -2);  /* remove lightuserdata */
+    return 1;  /* got upvalue */
+  }
+}
+
 static int load_aux (lua_State *L, int status, int envidx, int upvalidx, int upvalcnt) {
   int i;
-#if LUA_VERSION_NUM == 501
-  if (status == 0) {
-#else
   if (status == LUA_OK) {
-#endif
     if (envidx != 0) {  /* 'env' parameter? */
       lua_pushvalue(L, envidx);  /* environment for loaded function */
-      if (!lua_setupvalue(L, -2, 1))  /* set it as 1st upvalue */
-        lua_pop(L, 1);  /* remove 'env' if not used by previous call */
+      if (!getupval(L)) {  /* try to get shared upvalue */
+        if (!lua_setupvalue(L, -2, 1))  /* set it as 1st upvalue */
+          lua_pop(L, 1);  /* remove 'env' if not used by previous call */
+      } else {
+        lua_upvaluejoin(L, -2, 1, -1, 1);
+        lua_pop(L, 1);
+      }
     }
     if (upvalidx != 0) {  /* upvalues? */
       for (i = 0; i < upvalcnt; ++i) {
         lua_pushvalue(L, upvalidx + i);  /* upvalue for function */
-        if (!lua_setupvalue(L, -2, (2 + i))) {  /* set it */
-          lua_pop(L, 1);  /* remove it if not used by previous call */
-          break;  /* do not waste CPU time trying to set upvalues */
+        if (!getupval(L)) {  /* try to get shared upvalue */
+          if (!lua_setupvalue(L, -2, (2 + i))) {  /* set it */
+            lua_pop(L, 1);  /* remove it if not used by previous call */
+            break;  /* do not waste CPU time trying to set upvalues */
+          }
+        } else {
+          lua_upvaluejoin(L, -2, (2 + i), -1, 1);
+          lua_pop(L, 1);
         }
       }
     }
@@ -72,38 +104,49 @@ static int loadx (lua_State *L) {
   int upcnt = (upidx ? lua_gettop(L) - upidx + 1 : 0);
   if (s != NULL) {  /* loading a string? */
     const char *chunkname = luaL_optstring(L, 2, s);
-#if LUA_VERSION_NUM == 501
-    status = luaL_loadbuffer(L, s, l, chunkname);
-#else
     status = luaL_loadbufferx(L, s, l, chunkname, mode);
-#endif
   }
   else {  /* loading from a reader function */
     const char *chunkname = luaL_optstring(L, 2, "=(load)");
     luaL_checktype(L, 1, LUA_TFUNCTION);
     lua_settop(L, RESERVEDSLOT + upcnt);
     lua_insert(L, RESERVEDSLOT);  /* create reserved slot */
-#if LUA_VERSION_NUM == 501
-    status = lua_load(L, generic_reader, NULL, chunkname);
-#else
     status = lua_load(L, generic_reader, NULL, chunkname, mode);
-#endif
     lua_remove(L, RESERVEDSLOT);  /* remove reserved slot */
   }
   return load_aux(L, status, env, upidx, upcnt);
 }
 
+static int newupval(lua_State *L) {
+  if (luaL_loadstring(L, "local up return function() return up end") == 0) {  /* create upvalue */
+    lua_call(L, 0, 1);  /* get function */
+    lua_pushlightuserdata(L, &regkey_upval);  /* get upvalues table */
+    lua_rawget(L, LUA_REGISTRYINDEX);
+    lua_pushlightuserdata(L, lua_upvalueid(L, 1, 1));  /* push upvalue ID */
+    lua_pushvalue(L, -1);
+    lua_pushvalue(L, 1);  /* set upvalue ID -> upvalue */
+    lua_rawset(L, 2);
+    return 1;  /* return upvalue */
+  } else {
+    return lua_error(L);
+  }
+}
+
 static const struct luaL_Reg loadxlib[] = {
   {"loadx", loadx},
+  {"newupval", newupval},
   {NULL, NULL}
 };
 
 int luaopen_loadx (lua_State *L) {
-#if LUA_VERSION_NUM == 501
-  luaL_register(L, "loadx", loadxlib);
-#else
+  lua_pushlightuserdata(L, &regkey_upval);  /* registry key */
+  lua_newtable(L);  /* upvalues */
+  lua_newtable(L);  /* metatable */
+  lua_pushliteral(L, "k");  /* weak keys */
+  lua_setfield(L, -2, "__mode");
+  lua_setmetatable(L, -2);
+  lua_rawset(L, LUA_REGISTRYINDEX);  /* setup registry. can't use rawsetp because Lua 5.1 */
   luaL_newlib(L, loadxlib);
-#endif
   return 1;
 }
 
