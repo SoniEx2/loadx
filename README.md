@@ -11,7 +11,11 @@ Loads a chunk.
 
 This function is similar to Lua's native `load`, and has the following differences:
 
-If the resulting function has upvalues, the upvalues are set to the values of `upvalues`, if that parameter is given. For Lua 5.2+, the first upvalue, if not given, is set to the global environment. (For Lua 5.2+, when you load a main chunk, the resulting function will always have exactly one upvalue, the `_ENV` variable. However, when you load a binary chunk created from a function (e.g. `string.dump`), the resulting function can have an arbitrary number of upvalues.)
+If the resulting function has upvalues, the upvalues are set to the values of `upvalues`,
+if that parameter is given. The first upvalue, if not given, is set to the global environment.
+(When you load a main chunk, the resulting function will always have exactly one upvalue,
+the `_ENV` variable. However, when you load a binary chunk created from a function (e.g.
+`string.dump`), the resulting function can have an arbitrary number of upvalues.)
 
 See the native `load` for the definitions of `chunk`, `chunkname` and `mode`.
 
@@ -30,7 +34,8 @@ See also:
 
 Creates an upvalue object.
 
-Upvalue objects can be passed to loadx() in place of upvalue values. They allow you to share upvalues between functions.
+Upvalue objects can be passed to loadx() in place of upvalue values. They allow you to share
+upvalues between functions.
 
 ## Examples
 
