@@ -13,12 +13,12 @@ static int load_aux (lua_State *L, int status, int envidx, int upvalidx, int upv
       if (!lua_setupvalue(L, -2, 1))  /* set it as 1st upvalue */
         lua_pop(L, 1);  /* remove 'env' if not used by previous call */
     }
-    if (upvalidx != 0) { /* upvalcnt = 0 means 1 upvalue */
+    if (upvalidx != 0) {  /* upvalues? */
       for (i = 0; i < upvalcnt; ++i) {
-        lua_pushvalue(L, upvalidx + i);
-        if (!lua_setupvalue(L, -2, (2 + i))) {
-          lua_pop(L, 1);
-          break; /* do not waste CPU time trying to set upvalues */
+        lua_pushvalue(L, upvalidx + i);  /* upvalue for function */
+        if (!lua_setupvalue(L, -2, (2 + i))) {  /* set it */
+          lua_pop(L, 1);  /* remove it if not used by previous call */
+          break;  /* do not waste CPU time trying to set upvalues */
         }
       }
     }
@@ -82,14 +82,13 @@ static int loadx (lua_State *L) {
     const char *chunkname = luaL_optstring(L, 2, "=(load)");
     luaL_checktype(L, 1, LUA_TFUNCTION);
     lua_settop(L, RESERVEDSLOT + upcnt);
-    /* lua_pushnil(L); / * probably not needed */
     lua_insert(L, RESERVEDSLOT);  /* create reserved slot */
 #if LUA_VERSION_NUM == 501
     status = lua_load(L, generic_reader, NULL, chunkname);
 #else
     status = lua_load(L, generic_reader, NULL, chunkname, mode);
 #endif
-    lua_remove(L, RESERVEDSLOT);
+    lua_remove(L, RESERVEDSLOT);  /* remove reserved slot */
   }
   return load_aux(L, status, env, upidx, upcnt);
 }
